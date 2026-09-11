@@ -1,0 +1,27 @@
+services:
+  api:
+    build: .                # utilise le Dockerfile du dossier courant
+    ports:
+      - "8000:8000"          # host:container -> accessible via 127.0.0.1:8000
+    environment:
+      # "db" = nom du service Postgres ci-dessous, résolu automatiquement par Compose
+      DATABASE_URL: postgresql://ytastyg3:ytastyg3@db:5432/ytastyg3
+    depends_on:
+      - db                  # démarre db avant api (mais n'attend pas qu'il soit "prêt")
+
+  db:
+    image: postgres:16       # image officielle, pas besoin de Dockerfile custom
+    environment:
+      POSTGRES_USER: ytastyg3
+      POSTGRES_PASSWORD: ytastyg3
+      POSTGRES_DB: ytastyg3   # ces 3 vars = init automatique de la base au 1er démarrage
+    ports:
+      - "5432:5432"          # optionnel : permet de se connecter depuis un client hors Docker (ex. DBeaver)
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # données persistées hors du container
+
+volumes:
+  pgdata:                    # déclare le volume nommé utilisé ci-dessus
+
+  # pour lancer le compose : docker compose up --build
+  # utiliser  http://127.0.0.1:8000
