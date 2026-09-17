@@ -1,7 +1,7 @@
 # Modèle SQLAlchemy de la table "restaurants".
 from sqlalchemy import Integer, Column, String, Boolean
 from sqlalchemy.orm import relationship
-from db.database import Base
+from src.db.database import Base
 
 # Option	        Rôle
 # nullable=False	Interdit les valeurs vides — le champ devient obligatoire
@@ -17,3 +17,4 @@ class Restaurant(Base):
     opening_hours = Column(String, nullable=False) # opening_hours	horaires d'ouverture
     contact = Column(String, nullable=False) # contact	téléphone ou email de contact
     users = relationship("User", back_populates="restaurant")
+    produits = relationship("Produit", back_populates="restaurant")

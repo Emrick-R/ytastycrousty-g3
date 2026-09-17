@@ -1,7 +1,7 @@
 # Modèle SQLAlchemy de la table "users", liée à un restaurant.
 from sqlalchemy import Integer, Column, String, ForeignKey
 from sqlalchemy.orm import relationship
-from db.database import Base
+from src.db.database import Base
 
 # {
 #   "first_name": "Alice",
