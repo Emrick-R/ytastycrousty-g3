@@ -23,5 +23,12 @@ services:
 volumes:
   pgdata:                    # déclare le volume nommé utilisé ci-dessus
 
-  # pour lancer le compose : docker compose up --build
-  # utiliser  http://127.0.0.1:8000
+# pour lancer le compose : docker compose up --build
+# utiliser  `http://127.0.0.1:8000`
+# pour accèder au terminal du postgre après lancement du compose:
+# `docker compose exec db psql -U ytastyg3 -d ytastyg3`
+#  |         Commande	        |            Effet
+#  |\dt	                        |liste toutes les tables
+#  |\d                          |nom_table	détail des colonnes d'une table (types, contraintes)
+#  |SELECT * FROM restaurants;	|voir le contenu d'une table
+#  |\q	                        |quitter
