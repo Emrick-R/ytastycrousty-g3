@@ -16,5 +16,7 @@ class Restaurant(Base):
     is_open = Column(Boolean, default=True) # is_open	booléen — resto ouvert ou fermé
     opening_hours = Column(String, nullable=False) # opening_hours	horaires d'ouverture
     contact = Column(String, nullable=False) # contact	téléphone ou email de contact
+
     users = relationship("User", back_populates="restaurant")
     produits = relationship("Produit", back_populates="restaurant")
+    orders = relationship("Order", back_populates="restaurant")

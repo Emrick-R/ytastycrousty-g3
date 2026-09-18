@@ -20,5 +20,7 @@ class User(Base):
     username = Column (String, nullable=False)
     hashed_password = Column (String, nullable=False) # Attention c'est un mdp hashé
     role =Column (String, nullable=False)
+
     restaurant_id = Column (Integer, ForeignKey("restaurants.id"))
+
     restaurant = relationship("Restaurant", back_populates="users")

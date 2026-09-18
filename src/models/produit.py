@@ -23,7 +23,9 @@ class Produit(Base):
     category = Column(String, nullable=False)
     price = Column(Numeric(4,2), nullable=False)
     is_available = Column(Boolean, default=True)
+
     restaurant_id = Column(Integer, ForeignKey("restaurants.id"))
+
     restaurant = relationship("Restaurant", back_populates="produits")
     ingredients = relationship("Ingredient", secondary="produit_ingredient", back_populates="produits")
 
