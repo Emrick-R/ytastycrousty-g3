@@ -9,6 +9,7 @@ import src.models
 async def lifespan(app: FastAPI):
     # Au démarrage
     Base.metadata.create_all(bind=engine)
+
     yield
     # A la fermeture
 
