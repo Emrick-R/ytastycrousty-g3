@@ -42,7 +42,6 @@ class Order(Base):
     order_number = Column(String, nullable=False, unique=True)  # La commande peut être une suite de chiffre et de lettre
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))  # lanmda permet de créer une mini fonction qui s'utilise à chaque appel
     total_price = Column(Numeric(6, 2), nullable=False)  # Il peut aller jusqu'à 9999.99
-    # items = à voir avec orderitems
     status = Column(Enum(Status), nullable=False)
     pickup_mode = Column(Enum(PickupMode), nullable=False)
     customer_name = Column(String, nullable=False)
@@ -51,3 +50,4 @@ class Order(Base):
     restaurant_id = Column(Integer, ForeignKey("restaurants.id"))
 
     restaurant = relationship("Restaurant", back_populates="orders")
+    order_items = relationship("OrderItems", back_populates="order")

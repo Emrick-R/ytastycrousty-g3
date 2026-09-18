@@ -28,4 +28,4 @@ class Produit(Base):
 
     restaurant = relationship("Restaurant", back_populates="produits")
     ingredients = relationship("Ingredient", secondary="produit_ingredient", back_populates="produits")
-
+    order_items = relationship("OrderItem", back_populates="produit")
