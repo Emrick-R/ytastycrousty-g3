@@ -26,6 +26,8 @@ volumes:
 
 # pour lancer le compose : docker compose up --build
 # utiliser  `http://127.0.0.1:8000`
+# pour reset totalement la db à la fermeture du docker
+# docker compose down -v
 # pour accèder au terminal du postgre après lancement du compose:
 # `docker compose exec db psql -U ytastyg3 -d ytastyg3`
 #  |         Commande	        |            Effet
