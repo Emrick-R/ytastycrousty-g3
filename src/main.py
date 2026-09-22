@@ -7,6 +7,7 @@ from src.models.user import User
 from src.core.security import hashing_mdp
 
 from src.routers.auth import router as auth_router
+from src.scratch_router import router as scratch_router
 
 
 # asynccontextmanager permet de lancer des fonctions au lancement de l'app et à sa fermeture.
@@ -37,6 +38,7 @@ app = FastAPI(title="ytastycrousty-g3", lifespan=lifespan)
 
 # Route /auth
 app.include_router(auth_router)
+app.include_router(scratch_router)
 
 # route health, renvoi status ok si le server est allumé
 @app.get("/health")
