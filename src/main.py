@@ -2,11 +2,11 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 
+from src.db.seed import seed_admin, seed_restaurant
 from src.db.database import Base, engine, SessionLocal
-from src.models.user import User
-from src.core.security import hashing_mdp
 
 from src.routers.auth import router as auth_router
+from src.routers.restaurants import router as restaurant_router
 
 
 # asynccontextmanager permet de lancer des fonctions au lancement de l'app et à sa fermeture.
@@ -14,19 +14,11 @@ from src.routers.auth import router as auth_router
 async def lifespan(app: FastAPI):
     # Au démarrage
     Base.metadata.create_all(bind=engine)
-    # Seed du compte admin
+    db = SessionLocal()
     try :
-        db = SessionLocal()
-        adm = db.query(User).filter_by(username="admin123").first()
-        if not adm:
-            db.add(User(
-                first_name="Admin",
-                last_name="Ytasty",
-                username="admin123",
-                hashed_password=hashing_mdp("Admin@123456"),
-                role="admin"
-            ))
-            db.commit()
+    # Seed du compte admin
+        seed_admin(db)
+        seed_restaurant(db)
     finally:
         db.close()
 
@@ -37,6 +29,7 @@ app = FastAPI(title="ytastycrousty-g3", lifespan=lifespan)
 
 # Route /auth
 app.include_router(auth_router)
+app.include_router(restaurant_router)
 
 # route health, renvoi status ok si le server est allumé
 @app.get("/health")
