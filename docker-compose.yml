@@ -6,6 +6,7 @@ services:
     environment:
       # "db" = nom du service Postgres ci-dessous, résolu automatiquement par Compose
       DATABASE_URL: ${DATABASE_URL} #DockerCompose va lire directemtn le .env qui est dans la racine avec lui
+      SECRET_KEY: ${SECRET_KEY}
     depends_on:
       - db                  # démarre db avant api (mais n'attend pas qu'il soit "prêt")
 
