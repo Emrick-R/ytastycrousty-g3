@@ -33,3 +33,11 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="Utilisateur introuvable")  # à toi, même raisonnement que dans login
 
     return user
+
+# *roles_autorises peut avoir un ou plusieurs arg
+def require_role(*roles_autorises: str):
+    def verificateur(user: User = Depends(get_current_user)) -> User:
+        if user.role not in roles_autorises:
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        return user
+    return verificateur
