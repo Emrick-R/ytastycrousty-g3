@@ -14,7 +14,6 @@ Base = declarative_base()  # classe de base dont hériteront tous les modèles (
 
 
 def get_db():
-    """Dépendance FastAPI : ouvre une session DB par requête, la ferme après."""
     db = SessionLocal()
     try:
         yield db

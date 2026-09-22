@@ -50,4 +50,4 @@ class Order(Base):
     restaurant_id = Column(Integer, ForeignKey("restaurants.id"))
 
     restaurant = relationship("Restaurant", back_populates="orders")
-    order_items = relationship("OrderItems", back_populates="order")
+    order_items = relationship("OrderItem", back_populates="order")
