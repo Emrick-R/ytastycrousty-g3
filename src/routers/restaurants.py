@@ -1,7 +1,7 @@
 # Router des restaurants : lecture publique (liste et détail) et
 # modification réservée à l'admin (infos de contact et ouverture).
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from src.core import require_role
@@ -84,31 +84,24 @@ def patch_restaurant_availability(item: RestaurantAvailability, restaurant_id: i
 
 # Schéma d'entrée du POST
 class RestaurantCreate(BaseModel):
-    name: str
-    city: str
+    name: str = Field(min_length=1)
+    city: str = Field(min_length=1)
     address: str
-    is_open: bool
+    is_open: bool = True  # ouvert par défaut, comme dans le modèle
     opening_hours: str
     contact: str
 
 # POST /restaurant : créer un restaurant (admin uniquement).
 @router.post("/restaurants", status_code=201, response_model=RestaurantOut)
-def post_user(item: RestaurantCreate,
-             db: Session = Depends(get_db),
-             admin: User = Depends(require_role("admin"))
-             ):
-    user = db.query(User).filter_by(username=item.name).first()
-    if user:
-        raise HTTPException(status_code=400, detail="Resource déjà existante")
-    nouveau_restaurant = Restaurant(
-        name=item.name,
-        city=item.city,
-        address=item.address,
-        is_open=item.is_open,
-        opening_hours=item.opening_hours,
-        contact=item.contact
-    )
+def create_restaurant(item: RestaurantCreate, db: Session = Depends(get_db),
+                      admin: User = Depends(require_role("admin"))):
+    # Le nom sert de clé au seed : il doit rester unique
+    if db.query(Restaurant).filter_by(name=item.name).first():
+        raise HTTPException(status_code=400, detail="Un restaurant porte déjà ce nom")
+
+    # model_dump + ** : les champs du schéma ont exactement les noms des colonnes
+    nouveau_restaurant = Restaurant(**item.model_dump())
     db.add(nouveau_restaurant)
     db.commit()
-    db.refresh(nouveau_restaurant) # on le refresh pour obtenir l'id genere
+    db.refresh(nouveau_restaurant)  # récupère l'id généré
     return nouveau_restaurant
