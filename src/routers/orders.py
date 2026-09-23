@@ -170,3 +170,27 @@ def cancel_order(order_number: str, db: Session = Depends(get_db), user: User = 
     db.commit()
     db.refresh(order)
     return commande_vers_sortie(order)
+
+class OrderStatusUpdate(BaseModel):
+    status: Status  # Enum : un statut hors liste -> 422
+
+# Statuts finaux : une commande retirée ou annulée ne change plus de statut
+STATUTS_FINAUX = (Status.collected, Status.cancelled)
+
+
+# PATCH /orders/{order_number}/status : changement de statut (admin, ou staff du restaurant)
+@router.patch("/orders/{order_number}/status", response_model=OrderOut)
+def update_order_status(order_number: str, item: OrderStatusUpdate, db: Session = Depends(get_db),
+                        user: User = Depends(get_current_user)):
+    order = charger_commande(db, order_number)
+    # Écriture : verifier_acces_restaurant (direction refusée), pas la version lecture
+    verifier_acces_restaurant(user, order.restaurant_id)
+
+    # Une commande finale ne bouge plus, sauf si on renvoie le même statut (idempotence)
+    if order.status in STATUTS_FINAUX and item.status != order.status:
+        raise HTTPException(status_code=400, detail=f"Commande déjà {order.status.value}, statut non modifiable")
+
+    order.status = item.status
+    db.commit()
+    db.refresh(order)
+    return commande_vers_sortie(order)
