@@ -41,3 +41,15 @@ def require_role(*roles_autorises: str):
             raise HTTPException(status_code=403, detail="Accès refusé")
         return user
     return verificateur
+
+# Autorisation par restaurant : vérifie qu'un utilisateur a le droit de modifier
+# les données (produits, commandes...) d'un restaurant donné. Lève un 403 sinon.
+def verifier_acces_restaurant(user: User, restaurant_id: int) -> None:
+    # L'admin a accès à tous les restaurants
+    if user.role == "admin":
+        return
+    # Le staff n'a accès qu'à son propre restaurant
+    if user.role == "staff" and user.restaurant_id == restaurant_id:
+        return
+    # Tous les autres cas (direction, staff d'un autre restaurant, rôle inconnu) : refus
+    raise HTTPException(status_code=403, detail="Accès refusé à ce restaurant")

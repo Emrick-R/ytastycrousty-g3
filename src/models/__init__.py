@@ -2,7 +2,6 @@
 from src.models.restaurant import Restaurant
 from src.models.user import User
 from src.models.produit import Produit
-from src.models.ingredient import Ingredient
 from src.models.order import Order
 from src.models.order_item import OrderItem
 
