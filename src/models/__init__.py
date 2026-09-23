@@ -2,7 +2,7 @@
 from src.models.restaurant import Restaurant
 from src.models.user import User
 from src.models.produit import Produit
-from src.models.order import Order
+from src.models.order import Status, PickupMode, Order
 from src.models.order_item import OrderItem
 
 # Pour tester si les modèles se chargent bien dans le mapping SQLAlchemy :

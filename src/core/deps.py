@@ -53,3 +53,12 @@ def verifier_acces_restaurant(user: User, restaurant_id: int) -> None:
         return
     # Tous les autres cas (direction, staff d'un autre restaurant, rôle inconnu) : refus
     raise HTTPException(status_code=403, detail="Accès refusé à ce restaurant")
+
+# Autorisation en LECTURE sur un restaurant : admin et direction voient tout,
+# staff uniquement son restaurant. Lève un 403 sinon.
+def verifier_lecture_restaurant(user: User, restaurant_id: int) -> None:
+    if user.role in ("admin", "direction"):
+        return
+    if user.role == "staff" and user.restaurant_id == restaurant_id:
+        return
+    raise HTTPException(status_code=403, detail="Accès refusé à ce restaurant")
