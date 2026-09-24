@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from src.core import require_role
+from src.core import require_role, REPONSES_LECTURE, REPONSES_ECRITURE, REPONSES_CREATION
 from src.db.database import get_db
 from src.models import Restaurant, User
 
-router = APIRouter()
+router = APIRouter(tags=["Restaurants"])
 
 
 # Schéma de sortie : ce que l'API renvoie pour un restaurant
@@ -23,14 +23,21 @@ class RestaurantOut(BaseModel):
 
 
 # GET /restaurants : liste de tous les restaurants (public)
-@router.get("/restaurants", response_model=list[RestaurantOut])
+@router.get("/restaurants", response_model=list[RestaurantOut], summary="Lister les restaurants")
 def get_restaurants(db: Session = Depends(get_db)):
+    """
+    Liste les trois restaurants avec leurs horaires, contact et état d'ouverture. Public.
+    """
     return db.query(Restaurant).all()
 
 
 # GET /restaurants/{restaurant_id} : détail d'un restaurant (public), 404 s'il n'existe pas
-@router.get("/restaurants/{restaurant_id}", response_model=RestaurantOut)
+@router.get("/restaurants/{restaurant_id}", response_model=RestaurantOut, responses=REPONSES_LECTURE,
+            summary="Consulter un restaurant")
 def get_restaurant(restaurant_id: int, db: Session = Depends(get_db)):
+    """
+    Détail d'un restaurant. Public. **404** s'il n'existe pas.
+    """
     restaurant = db.query(Restaurant).filter_by(id=restaurant_id).first()
     if not restaurant:
         raise HTTPException(status_code=404, detail="Ressource introuvable")
@@ -46,9 +53,15 @@ class RestaurantUpdate(BaseModel):
 
 
 # PATCH /restaurants/{restaurant_id} : modifie adresse et/ou contact (admin uniquement)
-@router.patch("/restaurants/{restaurant_id}", response_model=RestaurantOut)
+@router.patch("/restaurants/{restaurant_id}", response_model=RestaurantOut, responses=REPONSES_ECRITURE,
+              summary="Modifier un restaurant")
 def patch_restaurant(item: RestaurantUpdate, restaurant_id: int, db: Session = Depends(get_db),
                      admin: User = Depends(require_role("admin"))):
+    """
+        Modifie l'**adresse** et/ou le **contact**. Réservé à l'**admin**.
+
+        Seuls les champs envoyés sont modifiés. L'ouverture se change via `/availability`.
+        """
     restaurant = db.query(Restaurant).filter_by(id=restaurant_id).first()
     if not restaurant:
         raise HTTPException(status_code=404, detail="Ressource introuvable")
@@ -70,9 +83,15 @@ class RestaurantAvailability(BaseModel):
 
 # PATCH /restaurants/{restaurant_id}/availability : ouvre ou ferme un restaurant (admin uniquement).
 # Idempotent : renvoyer le même état redonne simplement 200.
-@router.patch("/restaurants/{restaurant_id}/availability", response_model=RestaurantOut)
+@router.patch("/restaurants/{restaurant_id}/availability", response_model=RestaurantOut, responses=REPONSES_ECRITURE,
+              summary="Ouvrir ou fermer un restaurant")
 def patch_restaurant_availability(item: RestaurantAvailability, restaurant_id: int, db: Session = Depends(get_db),
                                   admin: User = Depends(require_role("admin"))):
+    """
+        Passe le restaurant en ouvert (`true`) ou fermé (`false`). Réservé à l'**admin**.
+
+        Un restaurant fermé refuse les nouvelles commandes. Renvoyer le même état redonne **200**.
+        """
     restaurant = db.query(Restaurant).filter_by(id=restaurant_id).first()
     if not restaurant:
         raise HTTPException(status_code=404, detail="Ressource introuvable")
@@ -81,6 +100,7 @@ def patch_restaurant_availability(item: RestaurantAvailability, restaurant_id: i
     db.commit()
     db.refresh(restaurant)
     return restaurant
+
 
 # Schéma d'entrée du POST
 class RestaurantCreate(BaseModel):
@@ -91,10 +111,17 @@ class RestaurantCreate(BaseModel):
     opening_hours: str
     contact: str
 
+
 # POST /restaurant : créer un restaurant (admin uniquement).
-@router.post("/restaurants", status_code=201, response_model=RestaurantOut)
+@router.post("/restaurants", status_code=201, response_model=RestaurantOut, responses=REPONSES_CREATION,
+             summary="Créer un restaurant")
 def create_restaurant(item: RestaurantCreate, db: Session = Depends(get_db),
                       admin: User = Depends(require_role("admin"))):
+    """
+        Ajoute un restaurant. Réservé à l'**admin** (route bonus, non exigée par le contrat).
+
+        Le nom doit être unique (**400** sinon). Ouvert par défaut.
+        """
     # Le nom sert de clé au seed : il doit rester unique
     if db.query(Restaurant).filter_by(name=item.name).first():
         raise HTTPException(status_code=400, detail="Un restaurant porte déjà ce nom")

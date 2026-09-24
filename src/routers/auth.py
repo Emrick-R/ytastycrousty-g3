@@ -6,14 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
-from src.core import verif_hash, creer_jwt, hashing_mdp, require_role
+from src.core import verif_hash, creer_jwt, hashing_mdp, require_role, ERR_401, REPONSES_CREATION, ERR_403, \
+    REPONSES_LECTURE_PROTEGEE, REPONSES_ECRITURE
 from src.models import User
 
 from src.db.database import get_db
 
-router = APIRouter()
+router = APIRouter(tags=["Auth & Users"])
 
-# ---------- Login ----------
 
 # Schéma d'entrée du login : pas de validation des règles ici,
 # pour ne rien révéler sur le format attendu des identifiants
@@ -22,9 +22,21 @@ class UserLogin(BaseModel):
     password: str
 
 
+# Schéma de sortie du login (format imposé par le contrat)
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str
+
+
 # POST /auth/login : renvoie un JWT si les identifiants sont corrects
-@router.post("/auth/login")
+@router.post("/auth/login", summary="Se connecter et obtenir un token JWT", responses=ERR_401, response_model=TokenOut)
 def login(item: UserLogin, db: Session = Depends(get_db)):
+    """
+        Vérifie l'identifiant et le mot de passe, puis renvoie un **access_token** JWT.
+
+        À coller dans le bouton **Authorize** pour accéder aux routes protégées.
+        Identifiants incorrects : **401**, sans préciser lequel est faux. Public.
+        """
     user = db.query(User).filter_by(username=item.username).first()
     # 401 générique : on ne dit pas si c'est le user ou le mot de passe qui est faux
     if not user or not verif_hash(item.password, user.hashed_password):
@@ -32,7 +44,6 @@ def login(item: UserLogin, db: Session = Depends(get_db)):
     token = creer_jwt(user.username, user.role)
     return {"access_token": token, "token_type": "bearer"}
 
-# ---------- Schémas Users ----------
 
 # Rôles autorisés par le contrat#
 # - `admin`
@@ -42,6 +53,7 @@ class Role(str, enum.Enum):
     admin = "admin"
     staff = "staff"
     direction = "direction"
+
 
 # Règles du mot de passe, écrites une seule fois et partagées par UserCreate et UserUpdate
 def verifier_regles_mdp(password: str) -> str:
@@ -53,6 +65,7 @@ def verifier_regles_mdp(password: str) -> str:
     if all(c.isalnum() for c in password):
         raise ValueError("Le mot de passe doit contenir au moins un caractère spécial")
     return password
+
 
 class UserCreate(BaseModel):
     first_name: str
@@ -67,6 +80,7 @@ class UserCreate(BaseModel):
     @classmethod
     def verifier_password(cls, password: str) -> str:
         return verifier_regles_mdp(password)
+
 
 # Tous les champs optionnels : seuls ceux envoyés dans le PATCH sont modifiés
 class UserUpdate(BaseModel):
@@ -83,6 +97,7 @@ class UserUpdate(BaseModel):
             return password
         return verifier_regles_mdp(password)
 
+
 # Schéma de sortie : jamais de mot de passe ni de hash
 class UserOut(BaseModel):
     id: int
@@ -93,14 +108,22 @@ class UserOut(BaseModel):
     restaurant_id: int | None
 
 
-# ---------- Routes Users ----------
-
 # POST /users : création d'un utilisateur (admin uniquement)
-@router.post("/users", status_code=201, response_model=UserOut)
+@router.post("/users", status_code=201, response_model=UserOut, summary="Créer un utilisateur",
+             responses=REPONSES_CREATION)
 def post_user(item: UserCreate,
-             db: Session = Depends(get_db),
-             admin: User = Depends(require_role("admin"))  # le fait de déclarer require_role applique le middleware
-             ):
+              db: Session = Depends(get_db),
+              admin: User = Depends(require_role("admin"))  # le fait de déclarer require_role applique le middleware
+              ):
+    """
+        Crée un compte **admin**, **staff** ou **direction**. Réservé à l'**admin**.
+
+        - username : alphanumérique, 8 à 12 caractères, unique
+        - mot de passe : 12 à 64 caractères, avec au moins un chiffre, une majuscule et un caractère spécial
+        - un **staff** doit être rattaché à un restaurant existant (`restaurant_id`)
+
+        Le mot de passe est stocké hashé et n'apparaît jamais dans la réponse.
+        """
     user = db.query(User).filter_by(username=item.username).first()
     if user:
         raise HTTPException(status_code=400, detail="Resource déjà existante")
@@ -114,19 +137,27 @@ def post_user(item: UserCreate,
     )
     db.add(nouvel_user)
     db.commit()
-    db.refresh(nouvel_user) # on le refresh pour obtenir l'id genere
+    db.refresh(nouvel_user)  # on le refresh pour obtenir l'id genere
     return nouvel_user
+
 
 # --- CRUD complet Users (bonus, au-delà du minimum imposé par le contrat) ---
 
 # GET /users : liste des utilisateurs (admin uniquement, bonus)
-@router.get("/users", response_model=list[UserOut])
+@router.get("/users", response_model=list[UserOut], summary="Lister les utilisateurs", responses=ERR_401 | ERR_403)
 def list_users(db: Session = Depends(get_db), admin: User = Depends(require_role("admin"))):
+    """Liste tous les comptes. Réservé à l'**admin**."""
+    """
+    Liste tous les comptes. Réservé à l'**admin**.
+    """
     return db.query(User).all()
 
+
 # GET /users/{user_id} : détail d'un utilisateur (admin uniquement, bonus)
-@router.get("/users/{user_id}", response_model=UserOut)
+@router.get("/users/{user_id}", response_model=UserOut, summary="Consulter un utilisateur",
+            responses=REPONSES_LECTURE_PROTEGEE)
 def get_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(require_role("admin"))):
+    """Détail d'un compte. Réservé à l'**admin**. **404** si l'utilisateur n'existe pas."""
     user = db.query(User).filter_by(id=user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
@@ -134,8 +165,16 @@ def get_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(
 
 
 # PATCH /users/{user_id} : mise à jour partielle (admin uniquement, bonus)
-@router.patch("/users/{user_id}", response_model=UserOut)
-def update_user(user_id: int, item: UserUpdate, db: Session = Depends(get_db), admin: User = Depends(require_role("admin"))):
+@router.patch("/users/{user_id}", response_model=UserOut, summary="Modifier un utilisateur",
+              responses=REPONSES_ECRITURE)
+def update_user(user_id: int, item: UserUpdate, db: Session = Depends(get_db),
+                admin: User = Depends(require_role("admin"))):
+    """
+    Mise à jour partielle : seuls les champs envoyés sont modifiés. Réservé à l'**admin**.
+
+    Le nouveau mot de passe éventuel suit les mêmes règles qu'à la création.
+    Le username n'est pas modifiable.
+    """
     user = db.query(User).filter_by(id=user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
@@ -157,8 +196,11 @@ def update_user(user_id: int, item: UserUpdate, db: Session = Depends(get_db), a
 
 
 # DELETE /users/{user_id} : suppression (admin uniquement, bonus), 204 sans contenu
-@router.delete("/users/{user_id}", status_code=204)
+@router.delete("/users/{user_id}", status_code=204, summary="Supprimer un utilisateur", responses=REPONSES_ECRITURE)
 def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(require_role("admin"))):
+    """
+    Supprime un compte. Réservé à l'**admin**. Réponse **204** sans contenu.
+    """
     user = db.query(User).filter_by(id=user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")

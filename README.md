@@ -251,4 +251,17 @@ pyproject.toml / uv.lock
 | `docker compose down -v` | arrête les conteneurs **et supprime les données** (repart de zéro) |
 | `docker compose exec db psql -U <POSTGRES_USER> -d <POSTGRES_DB>` | ouvre une session SQL dans le container PostgreSQL |
 | `docker compose exec api uv run python -c "..."` | exécute une commande Python ponctuelle dans le container API |
-| `TRUNCATE TABLE users RESTART IDENTITY;` (dans `psql`) | vide la table `users` et réinitialise les ID (admin123 sera reseedé au prochain démarrage) |
+| `TRUNCATE TABLE users RESTART IDENTITY;` (dans `psql`) | vide la table `users` et réinitialise les ID (admin123 sera reseedé au prochain démarrage) |0
+
+## Contributeurs
+
+### RIVET Emrick : 
+- Structure/dependence
+- conteneurisation
+- database (SQLAlchemy + PSQL)
+- modèles et relations de donées
+- routing FASTAPI 
+- logique endpoint: Auth, Users, Restaurants, Produits, commandes
+
+### DALLIER Robin
+- Création du repository Github

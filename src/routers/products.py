@@ -5,11 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_, func
 from sqlalchemy.orm import Session
 
-from src.core import get_current_user, verifier_acces_restaurant
+from src.core import get_current_user, verifier_acces_restaurant, REPONSES_ECRITURE, REPONSES_LECTURE
 from src.models import Produit, User, Restaurant
 from src.db.database import get_db
 
-router = APIRouter()
+router = APIRouter(tags=["Produits"])
 
 
 # Schéma de sortie : ce que l'API renvoie pour un produit
@@ -27,13 +27,23 @@ class ProductOut(BaseModel):
 
 
 # GET /products : category, q, restaurant_id, is_available
-@router.get("/products", response_model=list[ProductOut])
+@router.get("/products", response_model=list[ProductOut], summary="Lister les produits")
 def products(db: Session = Depends(get_db),
              category: str | None = None,
              q: str | None = None,
              is_available: bool | None = None,
              restaurant_id: int | None = None
              ):
+    """
+        Liste la carte, avec des filtres **combinables**. Public.
+
+        - `category` : catégorie exacte (ex : `burgers`)
+        - `q` : recherche insensible à la casse dans le nom, la description et les ingrédients
+        - `restaurant_id` : produits d'un restaurant
+        - `is_available` : disponibilité
+
+        Aucun résultat : **200** avec une liste vide.
+        """
     query = db.query(Produit)
     if category is not None:
         query = query.filter(Produit.category == category)
@@ -55,8 +65,12 @@ def products(db: Session = Depends(get_db),
 
 
 # GET /products/{product_id}
-@router.get("/products/{product_id}", response_model=ProductOut)
+@router.get("/products/{product_id}", response_model=ProductOut, responses=REPONSES_LECTURE,
+            summary="Consulter un produit")
 def get_product(product_id: int, db: Session = Depends(get_db)):
+    """
+    Détail d'un produit. Public. **404** s'il n'existe pas.
+    """
     produit = db.query(Produit).filter_by(id=product_id).first()
     if not produit:
         raise HTTPException(status_code=404, detail="Ressource introuvable")
@@ -76,9 +90,16 @@ class ProductCreate(BaseModel):
 
 
 # POST /products : création d'un produit (admin partout, staff dans son restaurant)
-@router.post("/products", status_code=201, response_model=ProductOut)
-def create_product(item: ProductCreate, db: Session = Depends(get_db),
-                   user: User = Depends(get_current_user)):
+@router.post("/products", status_code=201, response_model=ProductOut, summary="Créer un produit",
+             responses=REPONSES_ECRITURE)
+def create_product(item: ProductCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """
+        Ajoute un produit à la carte d'un restaurant.
+
+        - **admin** : n'importe quel restaurant
+        - **staff** : uniquement son propre restaurant (403 sinon)
+        - **direction** : refusé (403)
+        """
     # 403 si l'utilisateur n'a pas le droit d'agir sur ce restaurant
     verifier_acces_restaurant(user, item.restaurant_id)
 
@@ -120,9 +141,16 @@ def charger_produit(db: Session, product_id: int) -> Produit:
 
 
 # PATCH /products/{product_id} : mise à jour partielle (admin partout, staff dans son restaurant)
-@router.patch("/products/{product_id}", response_model=ProductOut)
+@router.patch("/products/{product_id}", response_model=ProductOut, responses=REPONSES_ECRITURE,
+              summary="Modifier un produit")
 def update_product(product_id: int, item: ProductUpdate, db: Session = Depends(get_db),
                    user: User = Depends(get_current_user)):
+    """
+        Mise à jour partielle : seuls les champs envoyés sont modifiés.
+
+        **admin** partout, **staff** uniquement sur les produits de son restaurant.
+        Le restaurant d'un produit n'est pas modifiable ; la disponibilité se change via `/availability`.
+        """
     produit = charger_produit(db, product_id)
     # Accès vérifié contre le restaurant DU PRODUIT EN BASE, jamais contre le body
     verifier_acces_restaurant(user, produit.restaurant_id)
@@ -146,9 +174,14 @@ def update_product(product_id: int, item: ProductUpdate, db: Session = Depends(g
 
 
 # DELETE /products/{product_id} : suppression (admin partout, staff dans son restaurant), 204 sans contenu
-@router.delete("/products/{product_id}", status_code=204)
-def delete_product(product_id: int, db: Session = Depends(get_db),
-                   user: User = Depends(get_current_user)):
+@router.delete("/products/{product_id}", status_code=204, responses=REPONSES_ECRITURE, summary="Supprimer un produit")
+def delete_product(product_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """
+        Retire un produit de la carte. **admin** partout, **staff** sur son restaurant.
+
+        Un produit déjà présent dans une commande ne peut pas être supprimé (**400**) :
+        le rendre indisponible à la place, pour conserver l'historique des commandes.
+        """
     produit = charger_produit(db, product_id)
     verifier_acces_restaurant(user, produit.restaurant_id)
 
@@ -164,9 +197,15 @@ def delete_product(product_id: int, db: Session = Depends(get_db),
 
 # PATCH /products/{product_id}/availability : rend un produit disponible ou non.
 # Idempotent : renvoyer le même état redonne simplement 200.
-@router.patch("/products/{product_id}/availability", response_model=ProductOut)
+@router.patch("/products/{product_id}/availability", response_model=ProductOut,
+              summary="Rendre un produit disponible ou non")
 def update_product_availability(product_id: int, item: ProductAvailability, db: Session = Depends(get_db),
                                 user: User = Depends(get_current_user)):
+    """
+        Change la disponibilité d'un produit. **admin** partout, **staff** sur son restaurant.
+
+        Un produit indisponible ne peut plus être commandé. Renvoyer le même état redonne **200**.
+        """
     produit = charger_produit(db, product_id)
     verifier_acces_restaurant(user, produit.restaurant_id)
 

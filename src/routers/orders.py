@@ -7,11 +7,12 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from src.core import get_current_user, verifier_lecture_restaurant, verifier_acces_restaurant
+from src.core import get_current_user, verifier_lecture_restaurant, verifier_acces_restaurant, REPONSES_LECTURE, \
+    REPONSES_LECTURE_PROTEGEE, ERR_400, REPONSES_ECRITURE
 from src.db.database import get_db
 from src.models import User, Restaurant, Status, PickupMode, Order, Produit, OrderItem
 
-router = APIRouter()
+router = APIRouter(tags=["Commandes"])
 
 
 class OrderItemOut(BaseModel):
@@ -63,15 +64,26 @@ def charger_commande(db: Session, order_number: str) -> Order:
 
 
 # GET /orders/{order_number} : suivi d'une commande par son numéro (public)
-@router.get("/orders/{order_number}", response_model=OrderOut)
+@router.get("/orders/{order_number}", response_model=OrderOut, responses=REPONSES_LECTURE,
+            summary="Suivre une commande")
 def get_order(order_number: str, db: Session = Depends(get_db)):
+    """
+    Consulte une commande à partir de son numéro de suivi. Public. **404** si le numéro est inconnu.
+    """
     return commande_vers_sortie(charger_commande(db, order_number))
 
 
 # GET /restaurants/{restaurant_id}/orders : commandes d'un restaurant, filtrables par statut
-@router.get("/restaurants/{restaurant_id}/orders", response_model=list[OrderOut])
+@router.get("/restaurants/{restaurant_id}/orders", response_model=list[OrderOut], responses=REPONSES_LECTURE_PROTEGEE,
+            summary="Lister les commandes d'un restaurant")
 def list_restaurant_orders(restaurant_id: int, status: Status | None = None,
                            db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """
+    Commandes d'un restaurant, les plus récentes en premier, filtrables par `status`.
+
+    - **admin** et **direction** : tous les restaurants
+    - **staff** : uniquement son restaurant (**403** sinon)
+    """
     # 404 si le restaurant n'existe pas, puis 403 si l'utilisateur ne peut pas le consulter
     if not db.query(Restaurant).filter_by(id=restaurant_id).first():
         raise HTTPException(status_code=404, detail="Restaurant introuvable")
@@ -116,8 +128,18 @@ def generer_order_number(db: Session) -> str:
 
 
 # POST /orders : création d'une commande (public), total calculé côté serveur
-@router.post("/orders", status_code=201, response_model=OrderOut)
+@router.post("/orders", status_code=201, response_model=OrderOut, responses=ERR_400, summary="Passer une commande")
 def create_order(item: OrderCreate, db: Session = Depends(get_db)):
+    """
+        Crée une commande et renvoie son **numéro de suivi** (`YC-XXXXXXXX`). Public.
+
+        Le **prix total est calculé par le serveur** à partir des prix en base ;
+        le prix de chaque produit est figé dans la commande.
+
+        Commande refusée (**400**) si le restaurant est fermé ou inexistant, ou si un produit
+        n'existe pas, appartient à un autre restaurant ou est indisponible.
+        Quantité inférieure ou égale à 0 : **422**.
+        """
     restaurant = db.query(Restaurant).filter_by(id=item.restaurant_id).first()
     if not restaurant:
         raise HTTPException(status_code=400, detail="Restaurant inexistant")
@@ -138,7 +160,7 @@ def create_order(item: OrderCreate, db: Session = Depends(get_db)):
         # Prix pris EN BASE, jamais dans la requête du client
         total += produit.price * ligne.quantity
         order_items.append(OrderItem(product_id=produit.id, quantity=ligne.quantity,
-                                prix_fige_commande=produit.price))
+                                     prix_fige_commande=produit.price))
 
     order = Order(
         order_number=generer_order_number(db),
@@ -156,8 +178,16 @@ def create_order(item: OrderCreate, db: Session = Depends(get_db)):
 
 
 # POST /orders/{order_number}/cancel : annulation (admin, ou staff du restaurant)
-@router.post("/orders/{order_number}/cancel", response_model=OrderOut)
+@router.post("/orders/{order_number}/cancel", response_model=OrderOut, responses=REPONSES_ECRITURE,
+             summary="Annuler une commande")
 def cancel_order(order_number: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """
+        Passe la commande au statut `cancelled`.
+
+        **admin** partout, **staff** sur les commandes de son restaurant, **direction** refusée.
+        Une commande déjà retirée (`collected`) ne peut plus être annulée (**400**).
+        Annuler une commande déjà annulée redonne **200**.
+        """
     order = charger_commande(db, order_number)
     # Écriture : verifier_acces_restaurant (direction refusée), pas la version lecture
     verifier_acces_restaurant(user, order.restaurant_id)
@@ -171,17 +201,26 @@ def cancel_order(order_number: str, db: Session = Depends(get_db), user: User = 
     db.refresh(order)
     return commande_vers_sortie(order)
 
+
 class OrderStatusUpdate(BaseModel):
     status: Status  # Enum : un statut hors liste -> 422
+
 
 # Statuts finaux : une commande retirée ou annulée ne change plus de statut
 STATUTS_FINAUX = (Status.collected, Status.cancelled)
 
 
 # PATCH /orders/{order_number}/status : changement de statut (admin, ou staff du restaurant)
-@router.patch("/orders/{order_number}/status", response_model=OrderOut)
+@router.patch("/orders/{order_number}/status", response_model=OrderOut, responses=REPONSES_ECRITURE,
+              summary="Changer le statut d'une commande")
 def update_order_status(order_number: str, item: OrderStatusUpdate, db: Session = Depends(get_db),
                         user: User = Depends(get_current_user)):
+    """
+    Statuts possibles : `pending`, `validated`, `preparing`, `ready`, `collected`, `cancelled`.
+
+    **admin** partout, **staff** sur les commandes de son restaurant, **direction** refusée.
+    Une commande `collected` ou `cancelled` ne change plus de statut (**400**).
+    """
     order = charger_commande(db, order_number)
     # Écriture : verifier_acces_restaurant (direction refusée), pas la version lecture
     verifier_acces_restaurant(user, order.restaurant_id)
