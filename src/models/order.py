@@ -40,9 +40,10 @@ class Order(Base):
     id = Column(Integer, primary_key=True)
 
     order_number = Column(String, nullable=False, unique=True)  # La commande peut être une suite de chiffre et de lettre
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))  # lanmda permet de créer une mini fonction qui s'utilise à chaque appel
+    # timezone=True : Postgres conserve le fuseau (UTC), sinon l'info est perdue à l'enregistrement
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))  # lanmda permet de créer une mini fonction qui s'utilise à chaque appel
     total_price = Column(Numeric(6, 2), nullable=False)  # Il peut aller jusqu'à 9999.99
-    status = Column(Enum(Status), nullable=False)
+    status = Column(Enum(Status), nullable=False, default=Status.pending)  # toute commande naît "pending"
     pickup_mode = Column(Enum(PickupMode), nullable=False)
     customer_name = Column(String, nullable=False)
     customer_email = Column(String, nullable=False)

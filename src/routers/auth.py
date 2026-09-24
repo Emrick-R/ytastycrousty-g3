@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.core import verif_hash, creer_jwt, hashing_mdp, require_role, ERR_401, REPONSES_CREATION, ERR_403, \
     REPONSES_LECTURE_PROTEGEE, REPONSES_ECRITURE
-from src.models import User
+from src.models import User, Restaurant
 
 from src.db.database import get_db
 
@@ -107,6 +107,14 @@ class UserOut(BaseModel):
     role: Role
     restaurant_id: int | None
 
+# Vérifications métier communes à POST et PATCH /users
+def verifier_restaurant_user(db: Session, role: Role, restaurant_id: int | None):
+    # Un staff doit être rattaché à un restaurant (base de l'autorisation par restaurant)
+    if role == Role.staff and restaurant_id is None:
+        raise HTTPException(status_code=400, detail="Un utilisateur staff doit avoir un restaurant_id")
+    # Le restaurant indiqué doit exister, sinon la clé étrangère provoquerait une erreur 500
+    if restaurant_id is not None and not db.query(Restaurant).filter_by(id=restaurant_id).first():
+        raise HTTPException(status_code=400, detail="Restaurant inexistant")
 
 # POST /users : création d'un utilisateur (admin uniquement)
 @router.post("/users", status_code=201, response_model=UserOut, summary="Créer un utilisateur",
@@ -127,6 +135,7 @@ def post_user(item: UserCreate,
     user = db.query(User).filter_by(username=item.username).first()
     if user:
         raise HTTPException(status_code=400, detail="Resource déjà existante")
+    verifier_restaurant_user(db, item.role, item.restaurant_id)
     nouvel_user = User(
         first_name=item.first_name,
         last_name=item.last_name,
@@ -178,6 +187,13 @@ def update_user(user_id: int, item: UserUpdate, db: Session = Depends(get_db),
     user = db.query(User).filter_by(id=user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    # État final = valeur envoyée, sinon valeur actuelle
+    if item.role is not None:
+        role_final = item.role
+    else:
+        role_final = user.role
+    restaurant_final = item.restaurant_id if item.restaurant_id is not None else user.restaurant_id
+    verifier_restaurant_user(db, role_final, restaurant_final)
 
     if item.first_name is not None:
         user.first_name = item.first_name
@@ -196,7 +212,7 @@ def update_user(user_id: int, item: UserUpdate, db: Session = Depends(get_db),
 
 
 # DELETE /users/{user_id} : suppression (admin uniquement, bonus), 204 sans contenu
-@router.delete("/users/{user_id}", status_code=204, summary="Supprimer un utilisateur", responses=REPONSES_ECRITURE)
+@router.delete("/users/{user_id}", status_code=204, summary="Supprimer un utilisateur", responses=REPONSES_LECTURE_PROTEGEE)
 def delete_user(user_id: int, db: Session = Depends(get_db), admin: User = Depends(require_role("admin"))):
     """
     Supprime un compte. Réservé à l'**admin**. Réponse **204** sans contenu.

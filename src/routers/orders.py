@@ -166,6 +166,7 @@ def create_order(item: OrderCreate, db: Session = Depends(get_db)):
         order_number=generer_order_number(db),
         restaurant_id=item.restaurant_id,
         total_price=total,
+        status=Status.pending,
         pickup_mode=item.pickup_mode,
         customer_name=item.customer.name,
         customer_email=item.customer.email,
