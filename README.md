@@ -2,17 +2,19 @@
 
 ## Présentation
 
-API REST pour la chaîne de restaurants Ytasty Crousty : gestion des restaurants, des produits, des commandes et de l'authentification. Construite avec FastAPI, SQLAlchemy et PostgreSQL, conteneurisée avec Docker.
+API REST de commande en ligne pour les 3 restaurants Ytasty Crousty (Aix, Lyon, Paris) : carte des produits, prise et suivi de commandes, gestion des restaurants. Authentification JWT et trois rôles : `admin`, `staff` et `direction`.
 
 ### Stack technique
 
-- Python 3.11+
+- Python 3.12
 - FastAPI
+- Pydantic
 - SQLAlchemy
 - PostgreSQL
-- Docker / docker-compose
+- JWT ([PyJWT](https://pyjwt.readthedocs.io/))
+- Hash des mots de passe : bcrypt / [passlib](https://passlib.readthedocs.io/)
 - Gestion des dépendances : [uv](https://docs.astral.sh/uv/)
-- Authentification : JWT ([PyJWT](https://pyjwt.readthedocs.io/)), hash des mots de passe ([passlib](https://passlib.readthedocs.io/) + bcrypt)
+- Docker et Docker Compose
 
 ## Prérequis et installation
 
@@ -50,7 +52,7 @@ Ne jamais commiter `.env` — il est déjà exclu par `.gitignore`.
 docker compose up --build
 ```
 
-Lance l'API **et** PostgreSQL, crée automatiquement les tables au démarrage (via un `lifespan` FastAPI) et initialise les données de base (voir ci-dessous). N'exige rien d'autre installé sur la machine que Docker.
+Lance l'API **et** PostgreSQL, crée automatiquement les tables au démarrage (via un `lifespan` FastAPI) et initialise les données de base (voir ci-dessous). L'API est alors disponible sur `http://localhost:8000` et Swagger sur `http://localhost:8000/docs`.
 
 Le projet est pensé pour tourner **uniquement via Docker** (pas de lancement local `uv run uvicorn` supporté) — `SECRET_KEY` doit être disponible dans l'environnement du process, et Docker s'en charge nativement via `docker-compose.yml`. Après toute modification de code, relance `docker compose up --build` (pas de hot-reload configuré).
 
@@ -118,14 +120,16 @@ Règles de validation :
 
 - `username` alphanumérique, de 8 à 12 caractères ;
 - `password` de 12 à 64 caractères, avec au moins un chiffre, une majuscule et un caractère spécial ;
-- un `staff` doit obligatoirement avoir un `restaurant_id`.
+- un `staff` doit obligatoirement être rattaché à un restaurant existant (`restaurant_id`).
 
 Ces comptes sont stockés en base : ils disparaissent après un `docker compose down -v` et sont à recréer.
 
 ### Authentification et utilisation de Swagger
 
+Dans Swagger (`/docs`), les routes sont regroupées par sections : **Santé**, **Auth & Users**, **Restaurants**, **Produits** et **Commandes**. Chaque route est documentée avec un résumé, une description et ses codes d'erreur possibles.
+
 1. `POST /auth/login` avec `{"username": "...", "password": "..."}` → renvoie `{"access_token": "...", "token_type": "bearer"}` (JWT signé HS256, valide 30 minutes).
-2. Sur `/docs`, bouton **Authorize** (en haut à droite) → coller l'`access_token` (sans le préfixe `Bearer`) → toutes les routes protégées de Swagger l'utilisent automatiquement ensuite.
+2. Bouton **Authorize** (en haut à droite) → coller l'`access_token` (sans le préfixe `Bearer`) → toutes les routes protégées l'utilisent ensuite automatiquement. Le token est conservé après un rechargement de la page.
 3. Rôles disponibles : `admin`, `staff`, `direction` — certaines routes sont réservées à un ou plusieurs rôles précis.
 
 ## Endpoints disponibles
@@ -156,9 +160,9 @@ Ces comptes sont stockés en base : ils disparaissent après un `docker compose 
 
 ## Règles métier principales
 
-- Le total d'une commande est **calculé par le serveur** à partir des prix en base ; le client n'envoie jamais de prix.
+- Le total d'une commande est **calculé par le serveur** à partir des prix en base ; le client n'envoie jamais de prix. Le prix de chaque produit est **figé** dans la commande au moment où elle est passée.
 - Une commande est refusée si le restaurant est fermé, si un produit est inexistant, appartient à un autre restaurant ou est indisponible, ou si une quantité est inférieure ou égale à 0.
-- Le numéro de commande est aléatoire, au format `YC-XXXXXXXX` (8 caractères majuscules/chiffres).
+- Le numéro de suivi est aléatoire, au format `YC-XXXXXXXX` (8 caractères majuscules/chiffres).
 - Statuts possibles : `pending`, `validated`, `preparing`, `ready`, `collected`, `cancelled`.
 - Une commande `collected` ou `cancelled` ne change plus de statut.
 - Un produit déjà commandé ne peut pas être supprimé : il faut le rendre indisponible via `PATCH /products/{id}/availability`.
@@ -181,38 +185,49 @@ Ces comptes sont stockés en base : ils disparaissent après un `docker compose 
 
 Sur Windows, préférer `127.0.0.1` à `localhost` (résolution IPv6 parfois capricieuse avec Docker Desktop).
 
-## Déploiement
+## Exposition publique (ngrok)
 
-L'API n'est pas encore déployée. URLs à compléter une fois en ligne :
+L'API tourne en local et est exposée publiquement en HTTPS avec [ngrok](https://ngrok.com/) :
+
+```bash
+ngrok http 8000
+```
+
+Le plan gratuit de ngrok limite les nouvelles connexions à **100 par minute**.
 
 | Élément | URL |
 | --- | --- |
-| API publique | `https://<à-compléter>` |
+| API publique (ngrok) | `https://<à-compléter>` |
 | Swagger | `https://<à-compléter>/docs` |
+
+## Tests
+
+Le script `tests/test_contrat.py` rejoue **135 scénarios** du contrat d'API. Il n'utilise que la bibliothèque standard Python.
+
+```bash
+# contre l'API locale
+uv run python tests/test_contrat.py
+
+# contre l'API exposée via ngrok
+uv run python tests/test_contrat.py https://<url-ngrok>
+```
+
+- Il crée ses propres données avec des noms uniques, pour ne pas entrer en collision avec l'existant.
+- Il remet le restaurant d'Aix dans son état d'origine et supprime les comptes de test qu'il a créés.
+- Via ngrok, il espace ses requêtes pour respecter la limite du plan gratuit.
+- Code de sortie `0` si tous les scénarios passent.
 
 ## Structure du projet
 
 ```
 src/
   main.py             # point d'entrée FastAPI, lifespan (création des tables + seeds au démarrage)
-  db/
-    database.py       # engine SQLAlchemy, session par requête (get_db), Base
-    seed.py           # seed_admin, seed_restaurant, seed_produits
-  models/
-    __init__.py       # centralise l'import de tous les modèles
-    restaurant.py
-    user.py
-    produit.py
-    order.py
-    order_item.py
-  core/
-    security.py        # hashing (bcrypt/passlib), création/vérification JWT — logique pure, sans FastAPI
-    deps.py             # dépendances FastAPI : get_current_user, require_role, vérifications d'accès par restaurant
-  routers/
-    auth.py             # /auth/login, /users (CRUD complet)
-    restaurants.py      # /restaurants
-    products.py         # /products
-    orders.py           # /orders, /restaurants/{id}/orders
+  core/               # sécurité (hash, JWT), dépendances d'autorisation, réponses d'erreur Swagger
+  db/                 # connexion SQLAlchemy (session par requête), seed (admin, restaurants, produits)
+  models/             # modèles SQLAlchemy : restaurant, user, produit, order, order_item
+  routers/            # auth & users, restaurants, products, orders
+tests/
+  test_contrat.py     # 135 scénarios du contrat d'API
 Dockerfile
 docker-compose.yml
 .env.example
@@ -231,7 +246,7 @@ pyproject.toml / uv.lock
 ## État actuel du projet
 
 - [x] Structure du projet et gestion des dépendances (`uv`)
-- [x] Conteneurisation (Docker + docker-compose)
+- [x] Conteneurisation (Docker + Docker Compose)
 - [x] Connexion SQLAlchemy + PostgreSQL
 - [x] Modèles de données et relations
 - [x] `GET /health`
@@ -240,7 +255,9 @@ pyproject.toml / uv.lock
 - [x] Endpoints Restaurants
 - [x] Endpoints Produits (CRUD, filtres, autorisation par restaurant)
 - [x] Endpoints Commandes
-- [ ] Déploiement public
+- [x] Documentation Swagger (sections, résumés, codes d'erreur)
+- [x] Tests du contrat (`tests/test_contrat.py`)
+- [x] Exposition publique en HTTPS (ngrok)
 
 ## Commandes utiles
 
@@ -251,7 +268,7 @@ pyproject.toml / uv.lock
 | `docker compose down -v` | arrête les conteneurs **et supprime les données** (repart de zéro) |
 | `docker compose exec db psql -U <POSTGRES_USER> -d <POSTGRES_DB>` | ouvre une session SQL dans le container PostgreSQL |
 | `docker compose exec api uv run python -c "..."` | exécute une commande Python ponctuelle dans le container API |
-| `TRUNCATE TABLE users RESTART IDENTITY;` (dans `psql`) | vide la table `users` et réinitialise les ID (admin123 sera reseedé au prochain démarrage) |0
+| `TRUNCATE TABLE users RESTART IDENTITY;` (dans `psql`) | vide la table `users` et réinitialise les ID (admin123 sera reseedé au prochain démarrage) |
 
 ## Contributeurs
 
